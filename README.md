@@ -1,5 +1,5 @@
 # Jitsi rtcstats client
-Rtcstats client [fork](https://github.com/fippo/rtcstats) tailored for jitsi-meet integration.
+Rtcstats client [fork](https://github.com/fippo/rtcstats) tailored for jitsi-meet integration. Server repository can be found here [rtcstats-servers](https://github.com/jitsi/rtcstats-server).
 
 ## Description
 The rtcstats ecosystem consists of a javascript client library which sends statistics and a node.js server which gathers and processes them.
@@ -66,8 +66,8 @@ trace('identity', null, {user: 'your client identifier',
 When using ontop of adapter it is typically not necessary (and potentially harmful) to shim the webkit and moz prefixes in addition to the unprefixed version.
 
 ## Details
-The client overwrites and proxies to the following function:
-* getUserMedia, getDisplayMedia.Data such as parameters which gum used and the outcome of the operation is sent to the server.
+The client overwrites and proxies the following functions and associated events:
+* getUserMedia, getDisplayMedia. Data such as parameters which gum used and the outcome of the operation is sent to the server.
 * RTCPeerConnection.
   Constructor parameters are sent to the server.
   By having control over the c’tor  the client adds listeners to several events of interest on a newly created peer connection object, such as.
@@ -103,4 +103,4 @@ The s3 dump can be visualized, giving you an almost chrome://webrtc-internals vi
 The dumps generated can be imported and visualized using [this tool](https://fippo.github.io/webrtc-dump-importer/rtcstats)
 
 ## Authors and acknowledgment
-The project is a fork of https://github.com/fippo/rtcstats thus proper thanks are in order for the original contributors.
+The project is a fork of https://github.com/fippo/rtcstats thus proper thanks are in order to the original contributors.

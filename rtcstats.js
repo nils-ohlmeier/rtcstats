@@ -2,6 +2,8 @@
 /* eslint-disable no-param-reassign */
 import { BrowserDetection } from '@jitsi/js-utils';
 
+import LZString from './lz-string';
+
 /**
  * transforms a maplike to an object. Mostly for getStats + JSON.parse(JSON.stringify())
  * @param {*} m
@@ -39,11 +41,12 @@ function deltaCompression(oldStats, newStatsArg) {
             if (report[name] === oldStats[id][name]) {
                 delete newStats[id][name];
             }
-            if (Object.keys(report).length === 0) {
-                delete newStats[id];
-            } else if (Object.keys(report).length === 1 && report.timestamp) {
-                delete newStats[id];
-            }
+
+            // if (Object.keys(report).length === 0) {
+            //     delete newStats[id];
+            // } else if (Object.keys(report).length === 1 && report.timestamp) {
+            //     delete newStats[id];
+            // }
         });
     });
 
@@ -249,23 +252,15 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
 
                 let prev = {};
                 const getStats = function() {
-                    if (isFirefox || isSafari) {
-                        pc.getStats(null).then(res => {
-                            const now = map2obj(res);
-                            const base = JSON.parse(JSON.stringify(now)); // our new prev
+                    // Use promised based getStats which should report webrtc statistics according to the standard.
+                    // Note, firefox doesn't fully support standard stats.
+                    pc.getStats(null).then(res => {
+                        const now = map2obj(res);
+                        const base = JSON.parse(JSON.stringify(now)); // our new prev
 
-                            trace('getstats', id, deltaCompression(prev, now));
-                            prev = base;
-                        });
-                    } else {
-                        pc.getStats(res => {
-                            const now = mangleChromeStats(pc, res);
-                            const base = JSON.parse(JSON.stringify(now)); // our new prev
-
-                            trace('getstats', id, deltaCompression(prev, now));
-                            prev = base;
-                        });
-                    }
+                        trace('getstats', id, deltaCompression(prev, now));
+                        prev = base;
+                    });
                 };
 
                 // TODO: do we want one big interval and all peerconnections

@@ -2,8 +2,6 @@
 /* eslint-disable no-param-reassign */
 import { BrowserDetection } from '@jitsi/js-utils';
 
-import LZString from './lz-string';
-
 /**
  * transforms a maplike to an object. Mostly for getStats + JSON.parse(JSON.stringify())
  * @param {*} m
@@ -73,31 +71,6 @@ function deltaCompression(oldStats, newStatsArg) {
 
 /**
  *
- * @param {*} pc
- * @param {*} response
- */
-function mangleChromeStats(pc, response) {
-    const standardReport = {};
-    const reports = response.result();
-
-    reports.forEach(report => {
-        const standardStats = {
-            id: report.id,
-            timestamp: report.timestamp.getTime(),
-            type: report.type
-        };
-
-        report.names().forEach(name => {
-            standardStats[name] = report.stat(name);
-        });
-        standardReport[standardStats.id] = standardStats;
-    });
-
-    return standardReport;
-}
-
-/**
- *
  * @param {*} stream
  */
 function dumpStream(stream) {
@@ -115,30 +88,6 @@ function dumpStream(stream) {
         })
     };
 }
-
-/*
-function filterBoringStats(results) {
-  Object.keys(results).forEach(function(id) {
-    switch (results[id].type) {
-      case 'certificate':
-      case 'codec':
-        delete results[id];
-        break;
-      default:
-        // noop
-    }
-  });
-  return results;
-}
-
-function removeTimestamps(results) {
-  // FIXME: does not work in FF since the timestamp can't be deleted.
-  Object.keys(results).forEach(function(id) {
-    delete results[id].timestamp;
-  });
-  return results;
-}
-*/
 
 /**
  *
@@ -620,14 +569,4 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
 
         navigator.mediaDevices.getDisplayMedia = gdm.bind(navigator.mediaDevices);
     }
-
-    // TODO: are there events defined on MST that would allow us to listen when enabled was set?
-    //    no :-(
-    /*
-    Object.defineProperty(MediaStreamTrack.prototype, 'enabled', {
-      set: function(value) {
-        trace('MediaStreamTrackEnable', this, value);
-      }
-     });
-    */
 }

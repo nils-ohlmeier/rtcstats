@@ -28,6 +28,21 @@ function map2obj(m) {
 function deltaCompression(oldStats, newStatsArg) {
     const newStats = JSON.parse(JSON.stringify(newStatsArg));
 
+    // Go through each report of the newly fetches stats entry and compare it with the previous one (old)
+    // If a field value (e.g. ssrc.id) from the new report matches the corresponding one from the old report
+    // delete it.
+    // The new stats entry will be returned thus any reports from the old stats entry that are no longer found
+    // in the new one will me considered as removed.
+    // stats entries are expected to have the following format:
+    // {reportName1: {
+    //    key1: value,
+    //    key2: value2
+    // },
+    // reportName2: {
+    //    key1: value,
+    //    key2, value2,
+    // }}
+
     Object.keys(newStats).forEach(id => {
         const report = newStats[id];
 
@@ -39,15 +54,11 @@ function deltaCompression(oldStats, newStatsArg) {
             if (report[name] === oldStats[id][name]) {
                 delete newStats[id][name];
             }
-
-            // if (Object.keys(report).length === 0) {
-            //     delete newStats[id];
-            // } else if (Object.keys(report).length === 1 && report.timestamp) {
-            //     delete newStats[id];
-            // }
         });
     });
 
+    // TODO Snippet bellow adds the last timestamp as a stats level fields, probably used in feature extraction on the
+    // rtcstats-server side, most likely not used anymore, verify if this can be removed.
     let timestamp = -Infinity;
 
     Object.keys(newStats).forEach(id => {
@@ -96,7 +107,7 @@ function dumpStream(stream) {
  * @param {*} prefixesToWrap
  * @param {*} connectionFilter
  */
-export default function(trace, getStatsInterval, prefixesToWrap, connectionFilter) {
+export default function({ statsEntry: sendStatsEntry }, { connectionFilter, pollInterval, prefixesToWrap = [ '' ] }) {
     let peerconnectioncounter = 0;
 
     const browserDetection = new BrowserDetection();
@@ -151,52 +162,52 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                     config.browserType = 'webkit';
                 }
 
-                trace('create', id, config);
+                sendStatsEntry('create', id, config);
 
                 // TODO: do we want to log constraints here? They are chrome-proprietary.
                 // eslint-disable-next-line max-len
                 // http://stackoverflow.com/questions/31003928/what-do-each-of-these-experimental-goog-rtcpeerconnectionconstraints-do
                 if (constraints) {
-                    trace('constraints', id, constraints);
+                    sendStatsEntry('constraints', id, constraints);
                 }
 
                 pc.addEventListener('icecandidate', e => {
-                    trace('onicecandidate', id, e.candidate);
+                    sendStatsEntry('onicecandidate', id, e.candidate);
                 });
                 pc.addEventListener('addstream', e => {
-                    trace('onaddstream', id, `${e.stream.id} ${e.stream.getTracks().map(t => `${t.kind}:${t.id}`)}`);
+                    sendStatsEntry('onaddstream', id, `${e.stream.id} ${e.stream.getTracks().map(t => `${t.kind}:${t.id}`)}`);
                 });
                 pc.addEventListener('track', e => {
-                    trace(
+                    sendStatsEntry(
                         'ontrack',
                         id,
                         `${e.track.kind}:${e.track.id} ${e.streams.map(stream => `stream:${stream.id}`)}`
                     );
                 });
                 pc.addEventListener('removestream', e => {
-                    trace(
+                    sendStatsEntry(
                         'onremovestream',
                         id,
                         `${e.stream.id} ${e.stream.getTracks().map(t => `${t.kind}:${t.id}`)}`
                     );
                 });
                 pc.addEventListener('signalingstatechange', () => {
-                    trace('onsignalingstatechange', id, pc.signalingState);
+                    sendStatsEntry('onsignalingstatechange', id, pc.signalingState);
                 });
                 pc.addEventListener('iceconnectionstatechange', () => {
-                    trace('oniceconnectionstatechange', id, pc.iceConnectionState);
+                    sendStatsEntry('oniceconnectionstatechange', id, pc.iceConnectionState);
                 });
                 pc.addEventListener('icegatheringstatechange', () => {
-                    trace('onicegatheringstatechange', id, pc.iceGatheringState);
+                    sendStatsEntry('onicegatheringstatechange', id, pc.iceGatheringState);
                 });
                 pc.addEventListener('connectionstatechange', () => {
-                    trace('onconnectionstatechange', id, pc.connectionState);
+                    sendStatsEntry('onconnectionstatechange', id, pc.connectionState);
                 });
                 pc.addEventListener('negotiationneeded', () => {
-                    trace('onnegotiationneeded', id, undefined);
+                    sendStatsEntry('onnegotiationneeded', id, undefined);
                 });
                 pc.addEventListener('datachannel', event => {
-                    trace('ondatachannel', id, [ event.channel.id, event.channel.label ]);
+                    sendStatsEntry('ondatachannel', id, [ event.channel.id, event.channel.label ]);
                 });
 
                 let prev = {};
@@ -207,7 +218,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                         const now = map2obj(res);
                         const base = JSON.parse(JSON.stringify(now)); // our new prev
 
-                        trace('getstats', id, deltaCompression(prev, now));
+                        sendStatsEntry('getstats', id, deltaCompression(prev, now));
                         prev = base;
                     });
                 };
@@ -215,7 +226,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                 // TODO: do we want one big interval and all peerconnections
                 //    queried in that or one setInterval per PC?
                 //    we have to collect results anyway so...
-                if (getStatsInterval) {
+                if (pollInterval) {
                     const interval = window.setInterval(() => {
                         if (pc.signalingState === 'closed') {
                             window.clearInterval(interval);
@@ -223,7 +234,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                             return;
                         }
                         getStats();
-                    }, getStatsInterval);
+                    }, pollInterval);
                 }
 
                 pc.addEventListener('iceconnectionstatechange', () => {
@@ -247,7 +258,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
             if (nativeMethod) {
                 OrigPeerConnection.prototype[method] = function() {
                     try {
-                        trace(method, this.__rtcStatsId, arguments);
+                        sendStatsEntry(method, this.__rtcStatsId, arguments);
                     } catch (error) {
                         console.error(`RTCStats ${method} bind failed: `, error);
                     }
@@ -269,7 +280,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                             .map(t => `${t.kind}:${t.id}`)
                             .join(',');
 
-                        trace(method, this.__rtcStatsId, `${stream.id} ${streamInfo}`);
+                        sendStatsEntry(method, this.__rtcStatsId, `${stream.id} ${streamInfo}`);
                     } catch (error) {
                         console.error(`RTCStats ${method} bind failed: `, error);
                     }
@@ -288,7 +299,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                         const track = arguments[0];
                         const streams = [].slice.call(arguments, 1);
 
-                        trace(
+                        sendStatsEntry(
                             method,
                             this.__rtcStatsId,
                             `${track.kind}:${track.id} ${streams.map(s => `stream:${s.id}`).join(';') || '-'}`
@@ -310,7 +321,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                     try {
                         const track = arguments[0].track;
 
-                        trace(method, this.__rtcStatsId, track ? `${track.kind}:${track.id}` : 'null');
+                        sendStatsEntry(method, this.__rtcStatsId, track ? `${track.kind}:${track.id}` : 'null');
                     } catch (error) {
                         console.error(`RTCStats ${method} bind failed: `, error);
                     }
@@ -340,7 +351,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                     // We can only put a "barrier" at this point because the above logic is
                     // necessary in all cases, if something fails there we can't just bypass it.
                     try {
-                        trace(method, this.__rtcStatsId, opts);
+                        sendStatsEntry(method, this.__rtcStatsId, opts);
                     } catch (error) {
                         console.error(`RTCStats ${method} bind failed: `, error);
                     }
@@ -348,7 +359,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                     return nativeMethod.apply(this, opts ? [ opts ] : undefined).then(
                         description => {
                             try {
-                                trace(`${method}OnSuccess`, rtcStatsId, description);
+                                sendStatsEntry(`${method}OnSuccess`, rtcStatsId, description);
                             } catch (error) {
                                 console.error(`RTCStats ${method} promise success bind failed: `, error);
                             }
@@ -365,7 +376,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                         },
                         err => {
                             try {
-                                trace(`${method}OnFailure`, rtcStatsId, err.toString());
+                                sendStatsEntry(`${method}OnFailure`, rtcStatsId, err.toString());
                             } catch (error) {
                                 console.error(`RTCStats ${method} promise failure bind failed: `, error);
                             }
@@ -393,7 +404,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                     const args = arguments;
 
                     try {
-                        trace(method, this.__rtcStatsId, args[0]);
+                        sendStatsEntry(method, this.__rtcStatsId, args[0]);
                     } catch (error) {
                         console.error(`RTCStats ${method} bind failed: `, error);
                     }
@@ -401,7 +412,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                     return nativeMethod.apply(this, [ args[0] ]).then(
                         () => {
                             try {
-                                trace(`${method}OnSuccess`, rtcStatsId, undefined);
+                                sendStatsEntry(`${method}OnSuccess`, rtcStatsId, undefined);
                             } catch (error) {
                                 console.error(`RTCStats ${method} promise success bind failed: `, error);
                             }
@@ -418,7 +429,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                         },
                         err => {
                             try {
-                                trace(`${method}OnFailure`, rtcStatsId, err.toString());
+                                sendStatsEntry(`${method}OnFailure`, rtcStatsId, err.toString());
                             } catch (error) {
                                 console.error(`RTCStats ${method} promise failure bind failed: `, error);
                             }
@@ -461,7 +472,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
         const origGetUserMedia = navigator[name].bind(navigator);
         const gum = function() {
             try {
-                trace('getUserMedia', null, arguments[0]);
+                sendStatsEntry('getUserMedia', null, arguments[0]);
             } catch (error) {
                 console.error('RTCStats getUserMedia bind failed: ', error);
             }
@@ -473,7 +484,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                 arguments[0],
                 stream => {
                     try {
-                        trace('getUserMediaOnSuccess', null, dumpStream(stream));
+                        sendStatsEntry('getUserMediaOnSuccess', null, dumpStream(stream));
                     } catch (error) {
                         console.error('RTCStats getUserMediaOnSuccess bind failed: ', error);
                     }
@@ -486,7 +497,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                 },
                 err => {
                     try {
-                        trace('getUserMediaOnFailure', null, err.name);
+                        sendStatsEntry('getUserMediaOnFailure', null, err.name);
                     } catch (error) {
                         console.error('RTCStats getUserMediaOnFailure bind failed: ', error);
                     }
@@ -505,7 +516,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
         const origGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         const gum = function() {
             try {
-                trace('navigator.mediaDevices.getUserMedia', null, arguments[0]);
+                sendStatsEntry('navigator.mediaDevices.getUserMedia', null, arguments[0]);
             } catch (error) {
                 console.error('RTCStats navigator.mediaDevices.getUserMedia bind failed: ', error);
             }
@@ -513,7 +524,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
             return origGetUserMedia.apply(navigator.mediaDevices, arguments).then(
                 stream => {
                     try {
-                        trace('navigator.mediaDevices.getUserMediaOnSuccess', null, dumpStream(stream));
+                        sendStatsEntry('navigator.mediaDevices.getUserMediaOnSuccess', null, dumpStream(stream));
                     } catch (error) {
                         console.error('RTCStats navigator.mediaDevices.getUserMediaOnSuccess bind failed: ', error);
                     }
@@ -522,7 +533,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                 },
                 err => {
                     try {
-                        trace('navigator.mediaDevices.getUserMediaOnFailure', null, err.name);
+                        sendStatsEntry('navigator.mediaDevices.getUserMediaOnFailure', null, err.name);
                     } catch (error) {
                         console.error('RTCStats navigator.mediaDevices.getUserMediaOnFailure bind failed: ', error);
                     }
@@ -540,7 +551,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
         const origGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
         const gdm = function() {
             try {
-                trace('navigator.mediaDevices.getDisplayMedia', null, arguments[0]);
+                sendStatsEntry('navigator.mediaDevices.getDisplayMedia', null, arguments[0]);
             } catch (error) {
                 console.error('RTCStats navigator.mediaDevices.getDisplayMedia bind failed: ', error);
             }
@@ -548,7 +559,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
             return origGetDisplayMedia.apply(navigator.mediaDevices, arguments).then(
                 stream => {
                     try {
-                        trace('navigator.mediaDevices.getDisplayMediaOnSuccess', null, dumpStream(stream));
+                        sendStatsEntry('navigator.mediaDevices.getDisplayMediaOnSuccess', null, dumpStream(stream));
                     } catch (error) {
                         console.error('RTCStats navigator.mediaDevices.getDisplayMediaOnSuccess bind failed: ', error);
                     }
@@ -557,7 +568,7 @@ export default function(trace, getStatsInterval, prefixesToWrap, connectionFilte
                 },
                 err => {
                     try {
-                        trace('navigator.mediaDevices.getDisplayMediaOnFailure', null, err.name);
+                        sendStatsEntry('navigator.mediaDevices.getDisplayMediaOnFailure', null, err.name);
                     } catch (error) {
                         console.error('RTCStats navigator.mediaDevices.getDisplayMediaOnFailure bind failed: ', error);
                     }

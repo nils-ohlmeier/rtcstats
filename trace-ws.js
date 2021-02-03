@@ -1,6 +1,7 @@
 /* eslint-disable prefer-rest-params */
+import uuid from 'uuid';
 
-const PROTOCOL_VERSION = '3.0';
+const PROTOCOL_ITERATION = '3.1';
 
 /**
  *
@@ -12,26 +13,35 @@ function sendPing(ws) {
 
 /**
  *
- * @param {*} wsURL
+ * @param {*} endpoint
  * @param {*} onCloseCallback
  * @param {*} pingInterval
  */
-export default function(wsURL, onCloseCallback, pingInterval = 30000) {
+export default function({ endpoint, onCloseCallback, useLegacy, pingInterval = 30000 }) {
     const buffer = [];
+    const clientId = uuid.v4();
     let connection;
     let keepAliveInterval;
 
-    const trace = function() {
+    // We maintain support for legacy chrome rtcstats just in case we need some critical statistic
+    // only obtainable from that format, ideally we'd remove this in the future.
+    const protocolVersion = useLegacy ? `${PROTOCOL_ITERATION}_LEGACY` : `${PROTOCOL_ITERATION}_STANDARD`;
+
+    const trace = function(msg) {
     // console.log.apply(console, arguments);
     // TODO: drop getStats when not connected?
-        const args = Array.prototype.slice.call(arguments);
+        // const args = Array.prototype.slice.call(arguments);
 
-        args.push(new Date().getTime());
-        if (args[1] instanceof RTCPeerConnection) {
-            args[1] = args[1].__rtcStatsId;
-        }
+        // args.push(new Date().getTime());
+
+        // if (args[1] instanceof RTCPeerConnection) {
+        //     args[1] = args[1].__rtcStatsId;
+        // }
+
+        const serializedMsg = JSON.stringify(msg);
+
         if (connection && (connection.readyState === WebSocket.OPEN)) {
-            connection.send(JSON.stringify(args));
+            connection.send(serializedMsg);
         } else if (connection && (connection.readyState >= WebSocket.CLOSING)) {
             // no-op
         } else if (buffer.length < 300) {
@@ -39,8 +49,34 @@ export default function(wsURL, onCloseCallback, pingInterval = 30000) {
             // without the data from the initial calls the server wouldn't know how to decompress.
             // Ideally we wouldn't reach this limit as the connect should fairly soon after the PC init, but just
             // in case add a limit to the buffer, so we don't transform this into a memory leek.
-            buffer.push(args);
+            buffer.push(serializedMsg);
         }
+    };
+
+    trace.identity = function(...data) {
+
+        data.push(new Date().getTime());
+
+        const identityMsg = {
+            clientId,
+            type: 'identity',
+            data: JSON.stringify(data)
+        };
+
+        trace(identityMsg);
+    };
+
+    trace.statsEntry = function(...data) {
+
+        data.push(new Date().getTime());
+
+        const statsEntryMsg = {
+            clientId,
+            type: 'stats-entry',
+            data: JSON.stringify(data)
+        };
+
+        trace(statsEntryMsg);
     };
 
     trace.close = function() {
@@ -53,7 +89,7 @@ export default function(wsURL, onCloseCallback, pingInterval = 30000) {
         if (connection) {
             connection.close();
         }
-        connection = new WebSocket(wsURL + window.location.pathname, PROTOCOL_VERSION);
+        connection = new WebSocket(endpoint + window.location.pathname, protocolVersion);
 
         connection.onclose = function(closeEvent) {
             keepAliveInterval && clearInterval(keepAliveInterval);
@@ -67,7 +103,8 @@ export default function(wsURL, onCloseCallback, pingInterval = 30000) {
             keepAliveInterval = setInterval(sendPing.bind(null, connection), pingInterval);
 
             while (buffer.length) {
-                connection.send(JSON.stringify(buffer.shift()));
+                // Buffer contains serialized msg's so no need to stringify
+                connection.send(buffer.shift());
             }
         };
 

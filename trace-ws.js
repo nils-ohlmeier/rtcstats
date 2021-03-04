@@ -5,14 +5,6 @@ const PROTOCOL_ITERATION = '3.1';
 
 /**
  *
- * @param {*} ws
- */
-function sendPing(ws) {
-    ws.send('__ping__');
-}
-
-/**
- *
  * @param {*} endpoint
  * @param {*} onCloseCallback
  * @param {*} pingInterval
@@ -28,16 +20,6 @@ export default function({ endpoint, onCloseCallback, useLegacy, pingInterval = 3
     const protocolVersion = useLegacy ? `${PROTOCOL_ITERATION}_LEGACY` : `${PROTOCOL_ITERATION}_STANDARD`;
 
     const trace = function(msg) {
-    // console.log.apply(console, arguments);
-    // TODO: drop getStats when not connected?
-        // const args = Array.prototype.slice.call(arguments);
-
-        // args.push(new Date().getTime());
-
-        // if (args[1] instanceof RTCPeerConnection) {
-        //     args[1] = args[1].__rtcStatsId;
-        // }
-
         const serializedMsg = JSON.stringify(msg);
 
         if (connection && (connection.readyState === WebSocket.OPEN)) {
@@ -60,7 +42,7 @@ export default function({ endpoint, onCloseCallback, useLegacy, pingInterval = 3
         const identityMsg = {
             clientId,
             type: 'identity',
-            data: JSON.stringify(data)
+            data
         };
 
         trace(identityMsg);
@@ -79,6 +61,16 @@ export default function({ endpoint, onCloseCallback, useLegacy, pingInterval = 3
         trace(statsEntryMsg);
     };
 
+
+    trace.keepAlive = function() {
+
+        const keepaliveMsg = {
+            clientId,
+            type: 'keepalive'
+        };
+
+        trace(keepaliveMsg);
+    };
     trace.close = function() {
         connection && connection.close();
     };
@@ -100,7 +92,7 @@ export default function({ endpoint, onCloseCallback, useLegacy, pingInterval = 3
         };
 
         connection.onopen = function() {
-            keepAliveInterval = setInterval(sendPing.bind(null, connection), pingInterval);
+            keepAliveInterval = setInterval(trace.keepAlive, pingInterval);
 
             while (buffer.length) {
                 // Buffer contains serialized msg's so no need to stringify
@@ -115,7 +107,5 @@ export default function({ endpoint, onCloseCallback, useLegacy, pingInterval = 3
     */
     };
 
-
-    // trace.connect();
     return trace;
 }

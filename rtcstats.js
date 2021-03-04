@@ -82,6 +82,31 @@ function deltaCompression(oldStats, newStatsArg) {
 
 /**
  *
+ * @param {*} pc
+ * @param {*} response
+ */
+function mangleChromeStats(pc, response) {
+    const standardReport = {};
+    const reports = response.result();
+
+    reports.forEach(report => {
+        const standardStats = {
+            id: report.id,
+            timestamp: report.timestamp.getTime(),
+            type: report.type
+        };
+
+        report.names().forEach(name => {
+            standardStats[name] = report.stat(name);
+        });
+        standardReport[standardStats.id] = standardStats;
+    });
+
+    return standardReport;
+}
+
+/**
+ *
  * @param {*} stream
  */
 function dumpStream(stream) {
@@ -107,7 +132,10 @@ function dumpStream(stream) {
  * @param {*} prefixesToWrap
  * @param {*} connectionFilter
  */
-export default function({ statsEntry: sendStatsEntry }, { connectionFilter, pollInterval, prefixesToWrap = [ '' ] }) {
+export default function(
+        { statsEntry: sendStatsEntry },
+        { connectionFilter, pollInterval, useLegacy, prefixesToWrap = [ '' ] }
+) {
     let peerconnectioncounter = 0;
 
     const browserDetection = new BrowserDetection();
@@ -175,7 +203,11 @@ export default function({ statsEntry: sendStatsEntry }, { connectionFilter, poll
                     sendStatsEntry('onicecandidate', id, e.candidate);
                 });
                 pc.addEventListener('addstream', e => {
-                    sendStatsEntry('onaddstream', id, `${e.stream.id} ${e.stream.getTracks().map(t => `${t.kind}:${t.id}`)}`);
+                    sendStatsEntry(
+                        'onaddstream',
+                        id,
+                        `${e.stream.id} ${e.stream.getTracks().map(t => `${t.kind}:${t.id}`)}`
+                    );
                 });
                 pc.addEventListener('track', e => {
                     sendStatsEntry(
@@ -211,16 +243,29 @@ export default function({ statsEntry: sendStatsEntry }, { connectionFilter, poll
                 });
 
                 let prev = {};
-                const getStats = function() {
-                    // Use promised based getStats which should report webrtc statistics according to the standard.
-                    // Note, firefox doesn't fully support standard stats.
-                    pc.getStats(null).then(res => {
-                        const now = map2obj(res);
-                        const base = JSON.parse(JSON.stringify(now)); // our new prev
 
-                        sendStatsEntry('getstats', id, deltaCompression(prev, now));
-                        prev = base;
-                    });
+                const getStats = function() {
+                    if (isFirefox || isSafari || ((isChrome || isElectron) && !useLegacy)) {
+                        pc.getStats(null).then(res => {
+                            const now = map2obj(res);
+                            const base = JSON.parse(JSON.stringify(now)); // our new prev
+
+                            sendStatsEntry('getstats', id, deltaCompression(prev, now));
+                            prev = base;
+                        });
+                    } else if (isChrome || isElectron) {
+                        // for chromium based env we have the option of using the chrome getstats api via the
+                        // useLegacy flag.
+                        pc.getStats(res => {
+                            const now = mangleChromeStats(pc, res);
+                            const base = JSON.parse(JSON.stringify(now)); // our new prev
+
+                            sendStatsEntry('getstats', id, deltaCompression(prev, now));
+                            prev = base;
+                        });
+                    }
+
+                    // If the current env doesn't support any getstats call do nothing.
                 };
 
                 // TODO: do we want one big interval and all peerconnections

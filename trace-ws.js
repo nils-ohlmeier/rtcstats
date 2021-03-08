@@ -11,7 +11,7 @@ const PROTOCOL_ITERATION = '3.1';
  */
 export default function({ endpoint, onCloseCallback, useLegacy, pingInterval = 30000 }) {
     const buffer = [];
-    const clientId = uuid.v4();
+    const statsSessionId = uuid.v4();
     let connection;
     let keepAliveInterval;
 
@@ -40,7 +40,7 @@ export default function({ endpoint, onCloseCallback, useLegacy, pingInterval = 3
         data.push(new Date().getTime());
 
         const identityMsg = {
-            clientId,
+            statsSessionId,
             type: 'identity',
             data
         };
@@ -53,7 +53,7 @@ export default function({ endpoint, onCloseCallback, useLegacy, pingInterval = 3
         data.push(new Date().getTime());
 
         const statsEntryMsg = {
-            clientId,
+            statsSessionId,
             type: 'stats-entry',
             data: JSON.stringify(data)
         };
@@ -65,7 +65,7 @@ export default function({ endpoint, onCloseCallback, useLegacy, pingInterval = 3
     trace.keepAlive = function() {
 
         const keepaliveMsg = {
-            clientId,
+            statsSessionId,
             type: 'keepalive'
         };
 

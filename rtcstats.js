@@ -389,8 +389,8 @@ export default function(
                         } else {
                             opts = `${trackOrKind.kind}:${trackOrKind.id}`;
                         }
-                        if (arguments.length === 2) {
-                            opts += ' ' + arguments[1];
+                        if (arguments.length === 2 && typeof arguments[1] === 'object') {
+                            opts += ' ' + JSON.stringify(arguments[1]);
                         }
 
                         sendStatsEntry( method, this.__rtcStatsId, opts);

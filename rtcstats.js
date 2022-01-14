@@ -467,6 +467,22 @@ export default function(
                                 console.error(`RTCStats ${method} promise success bind failed: `, error);
                             }
 
+                            if (method.endsWith('Description')) {
+                                OrigPeerConnection.getSenders().forEach(sender => {
+                                    if (sender.transport) {
+                                        sender.transport.addEventListener('error', error => {
+                                            sendStatsEntry('RTCDtlsTransport.onerror', rtcStatsId, error);
+                                        });
+
+                                        sender.transport.addEventListener('statechange', () => {
+                                            const newstate = sender.transport.state;
+
+                                            sendStatsEntry('RTCDtlsTransport.onstatechange', rtcStatsId, newstate);
+                                        });
+                                    }
+                                });
+                            }
+
                             // We can't safely bypass this part of logic because it's necessary for
                             // Proxying this request. It determines weather the call is callback or promise based.
                             if (args.length >= 2 && typeof args[1] === 'function') {

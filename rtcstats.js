@@ -475,13 +475,13 @@ export default function(
                                         this.__dtlsTransport = sender.transport;
 
                                         sender.transport.addEventListener('error', error => {
-                                            sendStatsEntry('RTCDtlsTransport.onerror', rtcStatsId, error);
+                                            sendStatsEntry('ondtlserror', rtcStatsId, error);
                                         });
 
                                         sender.transport.addEventListener('statechange', () => {
                                             const newstate = sender.transport.state;
 
-                                            sendStatsEntry('RTCDtlsTransport.onstatechange', rtcStatsId, newstate);
+                                            sendStatsEntry('ondtlsstatechange', rtcStatsId, newstate);
                                         });
                                     }
                                 });

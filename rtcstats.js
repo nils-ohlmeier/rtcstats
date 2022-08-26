@@ -1,5 +1,6 @@
 /* eslint-disable prefer-rest-params */
 /* eslint-disable no-param-reassign */
+import { compress } from '@eonasdan/lz-string';
 import { BrowserDetection } from '@jitsi/js-utils/browser-detection';
 
 /**
@@ -134,7 +135,7 @@ function dumpStream(stream) {
  */
 export default function(
         { statsEntry: sendStatsEntry },
-        { connectionFilter, pollInterval, useLegacy, sendSdp = false, prefixesToWrap = [ '' ] }
+        { connectionFilter, pollInterval, useLegacy, sendSdp = false, prefixesToWrap = [ '' ], compressSdp = false }
 ) {
     let peerconnectioncounter = 0;
 
@@ -436,8 +437,21 @@ export default function(
                     return nativeMethod.apply(this, opts ? [ opts ] : undefined).then(
                         description => {
                             try {
+                                let data = '';
 
-                                const data = sendSdp ? description : '';
+                                if (sendSdp) {
+                                    console.error(`!!!!!!!!! SDP length: ${description.sdp.length}`);
+
+                                    data = { type: description.type };
+                                    if (compressSdp) {
+                                        data.sdpCompressed = compress(description.sdp);
+
+                                        console.error(`~~~~~~~~~~~~ compressed length: ${data.sdpCompressed.length}`);
+                                        console.error(`~~~~~~~~~~~~~~ compressed: ${data.sdpCompressed}`);
+                                    } else {
+                                        data.sdp = description.sdp;
+                                    }
+                                }
 
                                 sendStatsEntry(`${method}OnSuccess`, rtcStatsId, data);
                             } catch (error) {
@@ -476,15 +490,37 @@ export default function(
         });
 
         [ 'setLocalDescription', 'setRemoteDescription', 'addIceCandidate' ].forEach(method => {
+            console.error(`~~~~~~~~~~~~~~~~~~~ Native Method: ${method}`);
+
             const nativeMethod = OrigPeerConnection.prototype[method];
 
             if (nativeMethod) {
                 OrigPeerConnection.prototype[method] = function() {
+                    console.error(`!!!!!!!!!!!!!!!!!!!! Method: ${method}`);
+
                     const rtcStatsId = this.__rtcStatsId;
                     const args = arguments;
 
                     try {
-                        const data = sendSdp ? args[0] : '';
+                        let data = '';
+
+                        if (sendSdp) {
+                            if (method === 'addIceCandidate') {
+                                data = args[0];
+                            } else {
+                                console.error(`!!!!!!!!! SDP length: ${args[0].sdp.length}`);
+
+                                data = { type: args[0].type };
+                                if (compressSdp) {
+                                    data.sdpCompressed = compress(args[0].sdp);
+
+                                    console.error(`~~~~~~~~~~~~ compressed length: ${data.sdpCompressed.length}`);
+                                    console.error(`~~~~~~~~~~~~~~ compressed: ${data.sdpCompressed}`);
+                                } else {
+                                    data.sdp = args[0].sdp;
+                                }
+                            }
+                        }
 
                         sendStatsEntry(method, this.__rtcStatsId, data);
                     } catch (error) {

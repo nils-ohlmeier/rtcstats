@@ -6,12 +6,12 @@
   "dependencies": {
     "@jitsi/js-utils": "^2.0.0",
     "sdp": "^3.0.3",
-    "uuid": "^8.3.2"
+    "uuid": "8.3.2"
   },
   "devDependencies": {
-    "@jitsi/eslint-config": "^4.1.1",
-    "eslint": "8.1.0",
-    "eslint-plugin-import": "2.25.2"
+    "@jitsi/eslint-config": "4.1.5",
+    "eslint": "8.27.0",
+    "eslint-plugin-import": "2.26.0"
   },
   "scripts": {
     "lint": "eslint rtcstats.js trace-ws.js"
